@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract MultiSend is Ownable, ReentrancyGuard {
+
+    function sendETH(address payable[] memory recipients, uint256[] memory amounts) payable public nonReentrant {
+    require(recipients.length == amounts.length, "Array length mismatch");
+    require(msg.value >= getTotalAmount(amounts), "Insufficient ETH");
+
+    for (uint256 i = 0; i < recipients.length; i++) {
+        require(recipients[i] != address(0), "Invalid recipient address");
+        require(amounts[i] > 0, "Amount must be greater than zero");
+        require(address(this).balance >= amounts[i], "Insufficient contract balance");
+
+        recipients[i].transfer(amounts[i]);
+    }
+}
+    function sendToken(address tokenAddress, address payable[] memory recipients, uint256[] memory amounts) public nonReentrant {
+        require(tokenAddress != address(0), "Invalid token address");
+        require(recipients.length == amounts.length, "Array length mismatch");
+
+        if (tokenAddress == address(0)) {
+            sendETH(recipients, amounts);
+            return;
+        }
+
+        IERC20 token = IERC20(tokenAddress);
+        uint256 totalAmount = getTotalAmount(amounts);
+
+        require(token.allowance(msg.sender, address(this)) >= totalAmount, "Insufficient allowance");
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            require(recipients[i] != address(0), "Invalid recipient address");
+            require(token.transferFrom(msg.sender, recipients[i], amounts[i]), "Transfer failed");
+        }
+    }
+
+    function getTotalAmount(uint256[] memory amounts) private pure returns (uint256) {
+        uint256 totalAmount = 0;
+        for (uint256 i = 0; i < amounts.length; i++) {
+            totalAmount += amounts[i];
+            require(totalAmount >= amounts[i], "Overflow error");
+        }
+        return totalAmount;
+    }
+
+    function getContractEtherBalance() public view returns (uint256) {
+        return address(this).balance;
+}
+
+
+    function withdraw() public onlyOwner {
+        uint256 balance = address(this).balance;
+        payable(msg.sender).transfer(balance);
+    }
+
+}
